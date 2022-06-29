@@ -2,6 +2,7 @@ import React from "react";
 import {ToastContainer} from "react-toastify";
 import {useMessage} from "./hooks/useMessage";
 import {Form, Orders, Pagination} from "./components";
+import {useHttp} from "./hooks/useHttp";
 
 interface IOrder {
     researchPriceId: number
@@ -18,52 +19,102 @@ interface IOrder {
     id: number
 }
 
-interface IResData {
-    count: number
-    size: number
-    page: number
-    dataObjects: IOrder[]
-}
-
 const App: React.FC = () => {
     const message = useMessage()
+    const {request, loader} = useHttp()
     const [order, setOrder] = React.useState<IOrder[]>([])
-    const [loader, setLoader] = React.useState<boolean>(false)
     const [currentPage, setCurrentPage] = React.useState<number>(1)
     const countriesPerPage: number = 5
+    const [isPatch, transition] = React.useTransition()
 
-    const getData = async () => {
+    const [valueInput, setValueInput] = React.useState<string>('')
+    const [filterValue, setFilterValue] = React.useState<string>('')
+    const [valueSelectFilter, setValueSelectFilter] = React.useState<string>('')
+    const [sortSelector, setSortSelector] = React.useState<string>('')
+
+    const getOrder = React.useCallback(async (): Promise<void> => {
         try {
-            setLoader(true)
-            const res: Response = await fetch('http://localhost:5000/api')
-            const data: IResData = await res.json()
-            setOrder(data.dataObjects)
-            setLoader(false)
+            const data: IOrder[] = await request('/data')
+            setOrder(data)
             message('Данные успешно получены!', 'success')
         } catch (e) {
-            console.log(e)
-            message('Ошибка в сервере!', 'error')
         }
-    }
+    }, [])
 
     React.useEffect(() => {
-        getData()
+        getOrder()
     }, [])
 
     const lastCountryIndex = currentPage * countriesPerPage
     const firstCountryIndex = lastCountryIndex - countriesPerPage
 
-    const currentOrder = order.slice(firstCountryIndex, lastCountryIndex)
+    const filter: IOrder[] = React.useMemo((): IOrder[] => {
+        return order.filter(item => item.code.toLowerCase().includes(filterValue))
+    }, [filterValue, order, currentPage])
+
+    const defaultOrderFilter: IOrder[] = React.useMemo((): IOrder[] => {
+        return order.filter(item => item.code.toLowerCase().includes(filterValue))
+    }, [filterValue, order, currentPage])
+
+    const currentOrder: IOrder[] = React.useMemo((): IOrder[] => {
+        return filter.slice(firstCountryIndex, lastCountryIndex)
+    }, [filterValue, order, currentPage])
+
+    const changeInput = (e: React.ChangeEvent<HTMLInputElement>): void => {
+        setValueInput(e.target.value)
+        transition(() => {
+            setFilterValue(e.target.value)
+        })
+    }
+
+    const changeSelectFilter = (e: React.ChangeEvent<HTMLSelectElement>): void => {
+        setValueSelectFilter(e.target.value)
+        setSortSelector('')
+    }
+
+    const sortingApi = async (e: React.ChangeEvent<HTMLSelectElement>): Promise<void> => {
+        try {
+            const data = await request(`/data?_sort=${valueSelectFilter}&_order=${e.target.value}`)
+            setSortSelector(e.target.value)
+            setOrder(data)
+        } catch (e) {
+        }
+    }
+
+    const resetOrder = () => {
+        getOrder()
+        // setValueSelectFilter('')
+        setSortSelector('')
+        setValueInput('')
+    }
 
     return (
-        <div className='container mt-5'>
+        <div className='container mt-2'>
             <ToastContainer/>
-            <Form/>
-            <Orders orders={currentOrder} loader={loader}/>
-            <Pagination
-                countriesPerPage={countriesPerPage}
-                lengthOrder={order.length}
+            <h1>Siroca</h1>
+            <Form
+                valueInput={valueInput}
+                valueSelectFilter={valueSelectFilter}
+                sortSelector={sortSelector}
+                changeInput={changeInput}
+                changeSelectFilter={changeSelectFilter}
+                sortingApi={sortingApi}
+                resetOrder={resetOrder}
             />
+            <Orders
+                orders={currentOrder}
+                loader={loader}
+                isPatch={isPatch}
+            />
+            {
+                filter.length > 5 &&
+                <Pagination
+                    countriesPerPage={countriesPerPage}
+                    lengthOrder={defaultOrderFilter.length}
+                    currentPage={currentPage}
+                    setCurrentPage={setCurrentPage}
+                />
+            }
         </div>
     )
 }
